@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tradicion Character Match</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <style>
+        @font-face {
+            font-family: 'BeyondTheMountain';
+            src: url('https://fonts.cdnfonts.com/s/15361/Beyond The Mountain.woff');
+        }
+        body { margin: 0; padding: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        canvas { box-shadow: 0 0 50px rgba(0,0,0,0.9); border-radius: 8px; }
+        #fontLoader { font-family: 'BeyondTheMountain'; visibility: hidden; position: absolute; }
+    </style>
+</head>
+<body>
+<div id="fontLoader">.</div>
+
+<script>
+const GRID_SIZE = 6;
+const TILE_SIZE = 70;
+const START_Y = 180;
+const START_X = 65;
+const CHARACTERS = ['caballero', 'cabezudos', 'reymomo', 'hatillo', 'vejiganteC', 'vejiganteP'];
+
+class WelcomeScene extends Phaser.Scene {
+    constructor() { super('WelcomeScene'); }
+    preload() {
+        this.load.svg('welcomeBG', 'proposed background.svg', { width: 550, height: 750 });
+        this.load.svg('welcomeLogo', 'image_4.svg', { width: 400, height: 400 });
+        this.load.svg('playHost', 'image_3.svg', { width: 300, height: 300 });
+    }
+    create() {
+        this.add.image(240, 320, 'welcomeBG').setDisplaySize(550, 750).setAlpha(0.8);
+        this.add.image(240, 160, 'welcomeLogo').setOrigin(0.5).setScale(0.5);
+        const playBtn = this.add.image(240, 440, 'playHost').setOrigin(0.5).setInteractive({ useHandCursor: true });
+        playBtn.setScale(0.45); 
+        playBtn.on('pointerdown', () => this.scene.start('GameScene'));
+    }
+}
+
+class GameScene extends Phaser.Scene {
+    constructor() { 
+        super('GameScene'); 
+        this.selectedTile = null;
+        this.isBusy = false;
+        this.score = 0;
+        this.timeLeft = 60;
+        this.gameActive = true;
+        this.musicEnabled = true;
+        this.sfxEnabled = true;
+    }
+
+    preload() {
+        const s = { width: 128, height: 128 };
+        this.load.svg('caballero', 'CaballeroEspanol.svg', s);
+        this.load.svg('cabezudos', 'Cabezudos.svg', s);
+        this.load.svg('reymomo', 'ReyMomo.svg', s);
+        this.load.svg('hatillo', 'HatilloMask.svg', s);
+        this.load.svg('vejiganteC', 'VejiganteCarolina.svg', s);
+        this.load.svg('vejiganteP', 'VejigantePonce.svg', s);
+        this.load.audio('bgm', 'tropical-beat.mp3');
+        this.load.audio('matchSfx', 'match.mp3');
+        this.load.audio('swapSfx', 'swap.mp3');
+        this.load.audio('selectSfx', 'select.mp3');
+    }
+
+    create() {
+        this.add.image(240, 320, 'welcomeBG').setDisplaySize(550, 750).setAlpha(1);
+        
+        this.add.text(240, 75, 'CHARACTER MATCH', { 
+            fontFamily: 'BeyondTheMountain', fontSize: '42px', fill: '#ffffff', stroke: '#000', strokeThickness: 5
+        }).setOrigin(0.5);
+
+        const uiY = 125; 
+        this.musicBtn = this.add.text(40, uiY, '🎵', { fontSize: '26px' }).setOrigin(0.5).setInteractive();
+        this.timerBg = this.add.rectangle(80, uiY, 220, 18, 0x333333).setOrigin(0, 0.5);
+        this.timerBar = this.add.rectangle(80, uiY, 220, 18, 0x00ff00).setOrigin(0, 0.5);
+        this.sfxBtn = this.add.text(320, uiY, '🔊', { fontSize: '26px' }).setOrigin(0.5).setInteractive();
+        this.scoreText = this.add.text(450, uiY, 'Puntos: 0', { 
+            fontFamily: 'BeyondTheMountain', fontSize: '30px', fill: '#FFD700', stroke: '#000', strokeThickness: 3 
+        }).setOrigin(1, 0.5);
+
+        this.music = this.sound.add('bgm', { loop: true, volume: 0.3 });
+        if (this.musicEnabled) this.music.play();
+        this.matchSound = this.sound.add('matchSfx', { volume: 0.6 });
+        this.swapSound = this.sound.add('swapSfx', { volume: 0.5 });
+        this.selectSound = this.sound.add('selectSfx', { volume: 0.5 });
+
+        this.musicBtn.on('pointerdown', () => this.toggleMusic());
+        this.sfxBtn.on('pointerdown', () => this.toggleSfx());
+
+        // Initialize Grid with No-Match Check
+        this.grid = [];
+        for (let r = 0; r < GRID_SIZE; r++) {
+            this.grid[r] = [];
+            for (let c = 0; c < GRID_SIZE; c++) {
+                let key;
+                do {
+                    key = Phaser.Utils.Array.GetRandom(CHARACTERS);
+                } while (this.isMatchAtStart(r, c, key));
+                
+                this.grid[r][c] = this.spawnTile(r, c, key);
+            }
+        }
+
+        this.time.addEvent({ delay: 1000, callback: this.updateTimer, callbackScope: this, loop: true });
+    }
+
+    // New helper to prevent starting matches
+    isMatchAtStart(r, c, key) {
+        if (c >= 2 && this.grid[r][c-1].data.get('type') === key && this.grid[r][c-2].data.get('type') === key) return true;
+        if (r >= 2 && this.grid[r-1][c].data.get('type') === key && this.grid[r-2][c].data.get('type') === key) return true;
+        return false;
+    }
+
+    updateTimer() {
+        if (!this.gameActive) return;
+        this.timeLeft--;
+        let percentage = Math.max(0, this.timeLeft / 60);
+        this.timerBar.width = 220 * percentage;
+        if (this.timeLeft <= 10) this.timerBar.setFillStyle(0xff0000);
+        if (this.timeLeft <= 0) this.endGame();
+    }
+
+    endGame() {
+        this.gameActive = false;
+        this.isBusy = true;
+        if (this.music) this.music.stop();
+        this.add.rectangle(240, 320, 480, 640, 0x000000, 0.85);
+        this.add.text(240, 260, '¡FIN DEL JUEGO!', { fontFamily: 'BeyondTheMountain', fontSize: '50px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(240, 330, `Puntos: ${this.score}`, { fontFamily: 'BeyondTheMountain', fontSize: '36px', fill: '#FFD700' }).setOrigin(0.5);
+        this.add.text(240, 420, ' REPLAY ', { fontFamily: 'BeyondTheMountain', fontSize: '32px', fill: '#fff', backgroundColor: '#e67e22', padding: 10 })
+            .setOrigin(0.5).setInteractive().on('pointerdown', () => location.reload());
+    }
+
+    toggleMusic() {
+        this.musicEnabled = !this.musicEnabled;
+        if (this.musicEnabled) { this.music.play(); this.musicBtn.setText('🎵'); }
+        else { this.music.stop(); this.musicBtn.setText('🚫'); }
+    }
+
+    toggleSfx() {
+        this.sfxEnabled = !this.sfxEnabled;
+        this.sfxBtn.setText(this.sfxEnabled ? '🔊' : '🔇');
+    }
+
+    spawnTile(r, c, key = null) {
+        let x = START_X + c * TILE_SIZE;
+        let y = START_Y + r * TILE_SIZE; 
+        let type = key || Phaser.Utils.Array.GetRandom(CHARACTERS);
+        let tile = this.add.sprite(x, y, type).setInteractive();
+        tile.setScale(62 / 128).setData({ row: r, col: c, type: type });
+        tile.on('pointerdown', () => this.handleSelect(tile));
+        return tile;
+    }
+
+    handleSelect(tile) {
+        if (this.isBusy || !this.gameActive) return;
+        if (this.sfxEnabled) this.selectSound.play();
+        if (!this.selectedTile) {
+            this.selectedTile = tile;
+            tile.setTint(0xcccccc);
+        } else {
+            let t1 = this.selectedTile;
+            let t2 = tile;
+            let dist = Math.abs(t1.data.get('row') - t2.data.get('row')) + Math.abs(t1.data.get('col') - t2.data.get('col'));
+            if (dist === 1) { this.swapTiles(t1, t2); } 
+            else { t1.clearTint(); this.selectedTile = t2; t2.setTint(0xcccccc); }
+        }
+    }
+
+    swapTiles(t1, t2) {
+        this.isBusy = true;
+        if (this.sfxEnabled) this.swapSound.play();
+        let r1 = t1.data.get('row'), c1 = t1.data.get('col');
+        let r2 = t2.data.get('row'), c2 = t2.data.get('col');
+
+        this.tweens.add({
+            targets: [t1, t2],
+            x: (target) => target === t1 ? t2.x : t1.x,
+            y: (target) => target === t1 ? t2.y : t1.y,
+            duration: 250,
+            onComplete: () => {
+                this.grid[r1][c1] = t2; this.grid[r2][c2] = t1;
+                t1.data.set({row: r2, col: c2}); t2.data.set({row: r1, col: c1});
+                t1.clearTint(); this.selectedTile = null;
+                if (!this.checkMatches()) {
+                    this.tweens.add({
+                        targets: [t1, t2],
+                        x: (target) => target === t1 ? t2.x : t1.x,
+                        y: (target) => target === t1 ? t2.y : t1.y,
+                        duration: 250,
+                        onComplete: () => {
+                            this.grid[r1][c1] = t1; this.grid[r2][c2] = t2;
+                            t1.data.set({row: r1, col: c1}); t2.data.set({row: r2, col: c2});
+                            this.isBusy = false;
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    checkMatches() {
+        let toDestroy = new Set();
+        for (let r = 0; r < GRID_SIZE; r++) {
+            for (let c = 0; c < GRID_SIZE - 2; c++) {
+                let type = this.grid[r][c].data.get('type');
+                if (type === this.grid[r][c+1].data.get('type') && type === this.grid[r][c+2].data.get('type')) {
+                    toDestroy.add(this.grid[r][c]); toDestroy.add(this.grid[r][c+1]); toDestroy.add(this.grid[r][c+2]);
+                }
+            }
+        }
+        for (let c = 0; c < GRID_SIZE; c++) {
+            for (let r = 0; r < GRID_SIZE - 2; r++) {
+                let type = this.grid[r][c].data.get('type');
+                if (type === this.grid[r+1][c].data.get('type') && type === this.grid[r+2][c].data.get('type')) {
+                    toDestroy.add(this.grid[r][c]); toDestroy.add(this.grid[r+1][c]); toDestroy.add(this.grid[r+2][c]);
+                }
+            }
+        }
+
+        if (toDestroy.size > 0) {
+            this.handleMatch(toDestroy);
+            return true;
+        }
+        return false;
+    }
+
+    handleMatch(matches) {
+        this.isBusy = true;
+        if (this.sfxEnabled) this.matchSound.play();
+        this.score += matches.size * 10;
+        this.scoreText.setText('Puntos: ' + this.score);
+
+        this.tweens.add({
+            targets: Array.from(matches),
+            scale: 0,
+            duration: 300,
+            onComplete: () => {
+                matches.forEach(t => {
+                    this.grid[t.data.get('row')][t.data.get('col')] = null;
+                    t.destroy();
+                });
+                this.dropTiles();
+            }
+        });
+    }
+
+    dropTiles() {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            let emptySpots = 0;
+            for (let r = GRID_SIZE - 1; r >= 0; r--) {
+                if (this.grid[r][c] === null) {
+                    emptySpots++;
+                } else if (emptySpots > 0) {
+                    let tile = this.grid[r][c];
+                    let newRow = r + emptySpots;
+                    this.grid[newRow][c] = tile;
+                    this.grid[r][c] = null;
+                    tile.data.set('row', newRow);
+                    this.tweens.add({
+                        targets: tile,
+                        y: START_Y + newRow * TILE_SIZE,
+                        duration: 300,
+                        ease: 'Power2'
+                    });
+                }
+            }
+            for (let i = 0; i < emptySpots; i++) {
+                let r = emptySpots - 1 - i;
+                let tile = this.spawnTile(r, c);
+                this.grid[r][c] = tile;
+                tile.y = START_Y - (i + 1) * TILE_SIZE;
+                this.tweens.add({
+                    targets: tile,
+                    y: START_Y + r * TILE_SIZE,
+                    duration: 400,
+                    ease: 'Bounce.easeOut'
+                });
+            }
+        }
+        this.time.delayedCall(500, () => {
+            if (!this.checkMatches()) this.isBusy = false;
+        });
+    }
+}
+
+const config = {
+    type: Phaser.AUTO, width: 480, height: 640,
+    resolution: window.devicePixelRatio || 2,
+    render: { antialias: true },
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scene: [WelcomeScene, GameScene]
+};
+new Phaser.Game(config);
+</script>
+</body>
+</html>

@@ -31,19 +31,36 @@ class WelcomeScene extends Phaser.Scene {
         this.load.svg('welcomeBG', 'proposed background.svg', { width: 550, height: 750 });
         this.load.svg('welcomeLogo', 'image_4.svg', { width: 400, height: 400 });
         this.load.svg('playHost', 'image_3.svg', { width: 300, height: 300 });
+        this.load.audio('bgm', 'tropical-beat.mp3');
     }
     create() {
         this.add.image(240, 320, 'welcomeBG').setDisplaySize(550, 750).setAlpha(0.8);
-        this.add.image(240, 160, 'welcomeLogo').setOrigin(0.5).setScale(0.5);
+        
+        // image_4.svg increased by 25% (Scale 0.625)
+        this.add.image(240, 160, 'welcomeLogo').setOrigin(0.5).setScale(0.625);
+        
         const playBtn = this.add.image(240, 440, 'playHost').setOrigin(0.5).setInteractive({ useHandCursor: true });
-        playBtn.setScale(0.45); 
-        playBtn.on('pointerdown', () => this.scene.start('GameScene'));
+        
+        // image_3.svg increased by 100% (Scale 1.08)
+        playBtn.setScale(1.08);
+
+        // Music setup
+        if (!this.sound.get('bgm')) {
+            this.music = this.sound.add('bgm', { loop: true, volume: 0.3 });
+        }
+
+        playBtn.on('pointerdown', () => {
+            if (!this.music.isPlaying) {
+                this.music.play();
+            }
+            this.scene.start('GameScene');
+        });
     }
 }
 
 class GameScene extends Phaser.Scene {
-    constructor() { 
-        super('GameScene'); 
+    constructor() {
+        super('GameScene');
         this.selectedTile = null;
         this.isBusy = false;
         this.score = 0;
@@ -61,7 +78,6 @@ class GameScene extends Phaser.Scene {
         this.load.svg('hatillo', 'HatilloMask.svg', s);
         this.load.svg('vejiganteC', 'VejiganteCarolina.svg', s);
         this.load.svg('vejiganteP', 'VejigantePonce.svg', s);
-        this.load.audio('bgm', 'tropical-beat.mp3');
         this.load.audio('matchSfx', 'match.mp3');
         this.load.audio('swapSfx', 'swap.mp3');
         this.load.audio('selectSfx', 'select.mp3');
@@ -69,22 +85,21 @@ class GameScene extends Phaser.Scene {
 
     create() {
         this.add.image(240, 320, 'welcomeBG').setDisplaySize(550, 750).setAlpha(1);
-        
-        this.add.text(240, 75, 'CHARACTER MATCH', { 
+       
+        this.add.text(240, 75, 'CHARACTER MATCH', {
             fontFamily: 'BeyondTheMountain', fontSize: '42px', fill: '#ffffff', stroke: '#000', strokeThickness: 5
         }).setOrigin(0.5);
 
-        const uiY = 125; 
+        const uiY = 125;
         this.musicBtn = this.add.text(40, uiY, '🎵', { fontSize: '26px' }).setOrigin(0.5).setInteractive();
         this.timerBg = this.add.rectangle(80, uiY, 220, 18, 0x333333).setOrigin(0, 0.5);
         this.timerBar = this.add.rectangle(80, uiY, 220, 18, 0x00ff00).setOrigin(0, 0.5);
         this.sfxBtn = this.add.text(320, uiY, '🔊', { fontSize: '26px' }).setOrigin(0.5).setInteractive();
-        this.scoreText = this.add.text(450, uiY, 'Puntos: 0', { 
-            fontFamily: 'BeyondTheMountain', fontSize: '30px', fill: '#FFD700', stroke: '#000', strokeThickness: 3 
+        this.scoreText = this.add.text(450, uiY, 'Puntos: 0', {
+            fontFamily: 'BeyondTheMountain', fontSize: '30px', fill: '#FFD700', stroke: '#000', strokeThickness: 3
         }).setOrigin(1, 0.5);
 
-        this.music = this.sound.add('bgm', { loop: true, volume: 0.3 });
-        if (this.musicEnabled) this.music.play();
+        this.music = this.sound.get('bgm');
         this.matchSound = this.sound.add('matchSfx', { volume: 0.6 });
         this.swapSound = this.sound.add('swapSfx', { volume: 0.5 });
         this.selectSound = this.sound.add('selectSfx', { volume: 0.5 });
@@ -92,7 +107,6 @@ class GameScene extends Phaser.Scene {
         this.musicBtn.on('pointerdown', () => this.toggleMusic());
         this.sfxBtn.on('pointerdown', () => this.toggleSfx());
 
-        // Initialize Grid with No-Match Check
         this.grid = [];
         for (let r = 0; r < GRID_SIZE; r++) {
             this.grid[r] = [];
@@ -101,7 +115,6 @@ class GameScene extends Phaser.Scene {
                 do {
                     key = Phaser.Utils.Array.GetRandom(CHARACTERS);
                 } while (this.isMatchAtStart(r, c, key));
-                
                 this.grid[r][c] = this.spawnTile(r, c, key);
             }
         }
@@ -109,7 +122,6 @@ class GameScene extends Phaser.Scene {
         this.time.addEvent({ delay: 1000, callback: this.updateTimer, callbackScope: this, loop: true });
     }
 
-    // New helper to prevent starting matches
     isMatchAtStart(r, c, key) {
         if (c >= 2 && this.grid[r][c-1].data.get('type') === key && this.grid[r][c-2].data.get('type') === key) return true;
         if (r >= 2 && this.grid[r-1][c].data.get('type') === key && this.grid[r-2][c].data.get('type') === key) return true;
@@ -129,16 +141,24 @@ class GameScene extends Phaser.Scene {
         this.gameActive = false;
         this.isBusy = true;
         if (this.music) this.music.stop();
+        
         this.add.rectangle(240, 320, 480, 640, 0x000000, 0.85);
-        this.add.text(240, 260, '¡FIN DEL JUEGO!', { fontFamily: 'BeyondTheMountain', fontSize: '50px', fill: '#fff' }).setOrigin(0.5);
-        this.add.text(240, 330, `Puntos: ${this.score}`, { fontFamily: 'BeyondTheMountain', fontSize: '36px', fill: '#FFD700' }).setOrigin(0.5);
-        this.add.text(240, 420, ' REPLAY ', { fontFamily: 'BeyondTheMountain', fontSize: '32px', fill: '#fff', backgroundColor: '#e67e22', padding: 10 })
+        this.add.text(240, 80, '¡FIN DEL JUEGO!', { fontFamily: 'BeyondTheMountain', fontSize: '50px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(240, 140, `Puntos: ${this.score}`, { fontFamily: 'BeyondTheMountain', fontSize: '36px', fill: '#FFD700' }).setOrigin(0.5);
+
+        // Tradición Dance Company Info
+        const infoStyle = { fontFamily: 'Arial', fontSize: '18px', fill: '#ffffff', align: 'center', wordWrap: { width: 400 } };
+        this.add.text(240, 260, 'ATTENTION:', { fontFamily: 'Arial', fontSize: '20px', fontWeight: 'bold', fill: '#FFD700' }).setOrigin(0.5);
+        this.add.text(240, 340, 'Experience the heartbeat of Latin America with Tradición Dance Company. From Richmond to the world, we preserve the history of Puerto Rico through dance.', infoStyle).setOrigin(0.5);
+        this.add.text(240, 430, 'Inquiries: (804) 601-6261 | tradicion.org', { fontFamily: 'Arial', fontSize: '18px', fontWeight: 'bold', fill: '#FFD700' }).setOrigin(0.5);
+
+        this.add.text(240, 530, ' REPLAY ', { fontFamily: 'BeyondTheMountain', fontSize: '32px', fill: '#fff', backgroundColor: '#e67e22', padding: 10 })
             .setOrigin(0.5).setInteractive().on('pointerdown', () => location.reload());
     }
 
     toggleMusic() {
         this.musicEnabled = !this.musicEnabled;
-        if (this.musicEnabled) { this.music.play(); this.musicBtn.setText('🎵'); }
+        if (this.musicEnabled) { if(!this.music.isPlaying) this.music.play(); this.musicBtn.setText('🎵'); }
         else { this.music.stop(); this.musicBtn.setText('🚫'); }
     }
 
@@ -149,7 +169,7 @@ class GameScene extends Phaser.Scene {
 
     spawnTile(r, c, key = null) {
         let x = START_X + c * TILE_SIZE;
-        let y = START_Y + r * TILE_SIZE; 
+        let y = START_Y + r * TILE_SIZE;
         let type = key || Phaser.Utils.Array.GetRandom(CHARACTERS);
         let tile = this.add.sprite(x, y, type).setInteractive();
         tile.setScale(62 / 128).setData({ row: r, col: c, type: type });
@@ -167,7 +187,7 @@ class GameScene extends Phaser.Scene {
             let t1 = this.selectedTile;
             let t2 = tile;
             let dist = Math.abs(t1.data.get('row') - t2.data.get('row')) + Math.abs(t1.data.get('col') - t2.data.get('col'));
-            if (dist === 1) { this.swapTiles(t1, t2); } 
+            if (dist === 1) { this.swapTiles(t1, t2); }
             else { t1.clearTint(); this.selectedTile = t2; t2.setTint(0xcccccc); }
         }
     }
@@ -262,12 +282,7 @@ class GameScene extends Phaser.Scene {
                     this.grid[newRow][c] = tile;
                     this.grid[r][c] = null;
                     tile.data.set('row', newRow);
-                    this.tweens.add({
-                        targets: tile,
-                        y: START_Y + newRow * TILE_SIZE,
-                        duration: 300,
-                        ease: 'Power2'
-                    });
+                    this.tweens.add({ targets: tile, y: START_Y + newRow * TILE_SIZE, duration: 300, ease: 'Power2' });
                 }
             }
             for (let i = 0; i < emptySpots; i++) {
@@ -275,17 +290,10 @@ class GameScene extends Phaser.Scene {
                 let tile = this.spawnTile(r, c);
                 this.grid[r][c] = tile;
                 tile.y = START_Y - (i + 1) * TILE_SIZE;
-                this.tweens.add({
-                    targets: tile,
-                    y: START_Y + r * TILE_SIZE,
-                    duration: 400,
-                    ease: 'Bounce.easeOut'
-                });
+                this.tweens.add({ targets: tile, y: START_Y + r * TILE_SIZE, duration: 400, ease: 'Bounce.easeOut' });
             }
         }
-        this.time.delayedCall(500, () => {
-            if (!this.checkMatches()) this.isBusy = false;
-        });
+        this.time.delayedCall(500, () => { if (!this.checkMatches()) this.isBusy = false; });
     }
 }
 
